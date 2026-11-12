@@ -1,6 +1,6 @@
 package de.hackmod;
+// FIX v2: kein net.minecraft.Util mehr, nutzt System.currentTimeMillis()
 
-import net.minecraft.Util;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
@@ -22,7 +22,7 @@ public class ClickGui extends Screen {
     }
 
     private final List<Zone> zones = new ArrayList<>();
-    private final long openedAt = Util.getMillis();
+    private final long openedAt = System.currentTimeMillis();
 
     public ClickGui() {
         super(Component.literal("HackMod"));
@@ -35,7 +35,7 @@ public class ClickGui extends Screen {
     public void render(GuiGraphics g, int mx, int my, float delta) {
         zones.clear();
         Font f = this.font;
-        float fade = Math.min(1f, (Util.getMillis() - openedAt) / 180f);
+        float fade = Math.min(1f, (System.currentTimeMillis() - openedAt) / 180f);
 
         g.fillGradient(0, 0, width, height, ((int) (fade * 150) << 24) | 0x05050F, ((int) (fade * 215) << 24) | 0x140A28);
 

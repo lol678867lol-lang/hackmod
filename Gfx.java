@@ -1,6 +1,6 @@
 package de.hackmod;
+// FIX v2: kein net.minecraft.Util mehr, nutzt System.currentTimeMillis()
 
-import net.minecraft.Util;
 import net.minecraft.client.gui.GuiGraphics;
 
 /** Kleine Zeichen- und Farbhelfer. Alle Farben sind ARGB. */
@@ -22,7 +22,7 @@ public final class Gfx {
 
     /** Pulsierende Akzentfarbe (Lila <-> Tuerkis). offset verschiebt die Phase. */
     public static int accent(double offset) {
-        double t = Util.getMillis() / 1800.0 + offset;
+        double t = System.currentTimeMillis() / 1800.0 + offset;
         float k = (float) (0.5 + 0.5 * Math.sin(t * Math.PI * 2));
         return lerp(0xFF8A5CFF, 0xFF2EE6D6, k);
     }
