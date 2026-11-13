@@ -1,5 +1,5 @@
 package de.hackmod;
-// FIX v2: kein net.minecraft.Util mehr, nutzt System.currentTimeMillis()
+// v3: kein net.minecraft.Util, System.currentTimeMillis()
 
 import net.minecraft.client.gui.GuiGraphics;
 

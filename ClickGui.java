@@ -1,5 +1,5 @@
 package de.hackmod;
-// FIX v2: kein net.minecraft.Util mehr, nutzt System.currentTimeMillis()
+// v3: kein net.minecraft.Util, System.currentTimeMillis()
 
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -23,6 +23,8 @@ public class ClickGui extends Screen {
 
     private final List<Zone> zones = new ArrayList<>();
     private final long openedAt = System.currentTimeMillis();
+    private double scroll;
+    private int contentH;
 
     public ClickGui() {
         super(Component.literal("HackMod"));
@@ -39,27 +41,32 @@ public class ClickGui extends Screen {
 
         g.fillGradient(0, 0, width, height, ((int) (fade * 150) << 24) | 0x05050F, ((int) (fade * 215) << 24) | 0x140A28);
 
-        String title = "H A C K M O D";
-        g.drawString(f, title, (width - f.width(title)) / 2, 14, Gfx.accent(0));
-        String sub = "Linksklick: an/aus   Rechtsklick: Einstellungen   C / ESC: schliessen";
-        g.drawString(f, sub, (width - f.width(sub)) / 2, height - 12, 0xFF7A7A90);
-
         Module.Category[] cats = Module.Category.values();
-        final int PW = Math.max(112, Math.min(MAXPW, (width - 20 - (cats.length - 1) * GAP) / cats.length));
-        int total = cats.length * PW + (cats.length - 1) * GAP;
+        final int PW = 170;
+        int cols = Math.max(1, Math.min(cats.length, (width - 20 + GAP) / (PW + GAP)));
+        int total = cols * PW + (cols - 1) * GAP;
         int x0 = (width - total) / 2;
+        int[] colH = new int[cols];
+        int maxScroll = Math.max(0, contentH + TOP + 30 - height);
+        scroll = Math.max(-maxScroll, Math.min(0, scroll));
+        int baseY = TOP + (int) scroll;
         String tip = null;
 
         for (int i = 0; i < cats.length; i++) {
-            int px = x0 + i * (PW + GAP);
-            int py = TOP;
             List<Module> mods = Modules.byCategory(cats[i]);
+            if (mods.isEmpty()) continue;
+            int c = 0;
+            for (int k = 1; k < cols; k++) if (colH[k] < colH[c]) c = k;
+            int px = x0 + c * (PW + GAP);
+            int py = baseY + colH[c];
 
             int h = HEAD;
             for (Module m : mods) {
                 h += ROW;
                 if (m.expanded) h += SROW * m.settings.size();
             }
+
+            colH[c] += h + GAP;
 
             // Rahmen + Koerper
             g.fill(px - 1, py - 1, px + PW + 1, py + h + 1, Gfx.alpha(Gfx.accent(i * 0.25), 150));
@@ -115,6 +122,18 @@ public class ClickGui extends Screen {
             }
         }
 
+        int maxH = 0;
+        for (int v : colH) maxH = Math.max(maxH, v);
+        contentH = maxH;
+
+        // Titel- und Fusszeile (liegen ueber den scrollenden Panels)
+        g.fill(0, 0, width, TOP - 8, 0xE00A0A14);
+        g.fill(0, height - 20, width, height, 0xE00A0A14);
+        String title = "H A C K M O D";
+        g.drawString(f, title, (width - f.width(title)) / 2, 14, Gfx.accent(0));
+        String sub = "Linksklick: an/aus   Rechtsklick: Einstellungen   Mausrad: scrollen   C / ESC: schliessen";
+        g.drawString(f, sub, (width - f.width(sub)) / 2, height - 12, 0xFF7A7A90);
+
         if (tip != null) {
             int tw = f.width(tip);
             int tx = (width - tw) / 2;
@@ -127,6 +146,7 @@ public class ClickGui extends Screen {
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
         double mx = event.x(), my = event.y();
         int btn = event.button();
+        if (my < TOP - 8 || my > height - 20) return super.mouseClicked(event, doubleClick);
         for (int i = zones.size() - 1; i >= 0; i--) {
             Zone z = zones.get(i);
             if (!z.hit(mx, my)) continue;
@@ -141,6 +161,13 @@ public class ClickGui extends Screen {
             return true;
         }
         return super.mouseClicked(event, doubleClick);
+    }
+
+    public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+        scroll += scrollY * 24.0;
+        int maxScroll = Math.max(0, contentH + TOP + 30 - height);
+        scroll = Math.max(-maxScroll, Math.min(0, scroll));
+        return true;
     }
 
     @Override

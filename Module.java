@@ -9,7 +9,8 @@ import java.util.List;
 /** Basisklasse aller Hacks. */
 public abstract class Module {
     public enum Category {
-        BEWEGUNG("Bewegung"), KAMPF("Kampf"), WELT("Welt"), SICHT("Sicht");
+        BEWEGUNG("Bewegung"), FLUG("Flug"), KAMPF("Kampf"), COMBO("Speer/Mace"), CRYSTAL("Crystal/Anker"), SCHUTZ("Schutz"),
+        BAUEN("Bauen"), WELT("Welt"), SICHT("Sicht"), HUD("HUD");
         public final String label;
         Category(String label) { this.label = label; }
     }

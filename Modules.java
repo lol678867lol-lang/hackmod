@@ -4,6 +4,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.DeathScreen;
+import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
@@ -86,6 +87,60 @@ public final class Modules {
         ALL.add(new OreEsp());
         ALL.add(new StorageEsp());
         ALL.add(new EntityEsp());
+
+        // ---- Erweiterung
+        ALL.add(new Extra.BunnyHop());
+        ALL.add(new Extra.AutoJump());
+        ALL.add(new Extra.EdgeSneak());
+        ALL.add(new Extra.Sneak());
+        ALL.add(new Extra.Parkour());
+        ALL.add(new Extra.Dolphin());
+        ALL.add(new Extra.Twerk());
+        ALL.add(new Extra.Jetpack());
+        ALL.add(new Extra.Hover());
+        ALL.add(new Extra.ElytraFly());
+        ALL.add(new Extra.AutoRocket());
+        ALL.add(new Extra.NoClip());
+        ALL.add(new Extra.LongJump());
+        ALL.add(new Extra.FastFall());
+        ALL.add(new Extra.MultiAura());
+        ALL.add(new Extra.CritAura());
+        ALL.add(new Extra.AutoClicker());
+        ALL.add(new Extra.AutoWeapon());
+        ALL.add(new Extra.FastBow());
+        ALL.add(new Extra.SpinBot());
+        ALL.add(new Extra.Derp());
+        ALL.add(new Extra.CrystalBreaker());
+        ALL.add(new Extra.WebTrap());
+        ALL.add(new Combo.SpearCombo());
+        ALL.add(new Combo.MaceKill());
+        ALL.add(new Combo.WindBoost());
+        ALL.add(new Aura.CrystalAura());
+        ALL.add(new Aura.AnchorAura());
+        ALL.add(new Extra.AutoGapple());
+        ALL.add(new Extra.AutoArmor());
+        ALL.add(new Extra.AutoBlock());
+        ALL.add(new Extra.Surround());
+        ALL.add(new Extra.AutoXP());
+        ALL.add(new Extra.FastPlace());
+        ALL.add(new Extra.Nuker());
+        ALL.add(new Extra.CropBreaker());
+        ALL.add(new Extra.AutoFish());
+        ALL.add(new Extra.ChestStealer());
+        ALL.add(new Extra.MLG());
+        ALL.add(new Extra.AntiVoid());
+        ALL.add(new Extra.Zoom());
+        ALL.add(new Extra.Trail());
+        ALL.add(new Extra.SpawnerEsp());
+        ALL.add(new Extra.ItemEsp());
+        ALL.add(new Extra.TargetEsp());
+        ALL.add(new Extra.Radar());
+        ALL.add(new Extra.TotemCount());
+        ALL.add(new Extra.ArmorHud());
+        ALL.add(new Extra.TargetHud());
+        ALL.add(new Extra.Compass());
+        ALL.add(new Extra.Clock());
+        ALL.add(new Extra.LowHealthWarn());
     }
 
     public static List<Module> byCategory(Module.Category c) {
@@ -137,7 +192,7 @@ public final class Modules {
         final Setting speed = add(Setting.number("Tempo", 1.0, 0.2, 5.0, 0.1));
 
         Fly() {
-            super("Fly", "Fliegen mit Leertaste / Shift. (Server: allow-flight=true)", Category.BEWEGUNG);
+            super("Fly", "Fliegen mit Leertaste / Shift. (Server: allow-flight=true)", Category.FLUG);
         }
 
         @Override
@@ -268,20 +323,21 @@ public final class Modules {
     }
 
     public static class OreEsp extends Module {
-        final Setting range = add(Setting.number("Radius", 24, 8, 40, 4));
+        final Setting range = add(Setting.choice("Radius", 64, 16, 32, 64, 128, 256, 512, 1000, 2000, 5000, 10000));
         final Setting onlyRare = add(Setting.toggle("Nur seltene", false));
-        private List<int[]> hits = new ArrayList<>();
-        private int tick;
+        final Setting maxBoxes = add(Setting.choice("Max. Boxen", 300, 100, 300, 600, 1000));
+        final Setting tracers = add(Setting.toggle("Linien zu den naechsten", false));
+        private final ChunkScan scan = new ChunkScan();
 
         OreEsp() {
-            super("Erz-ESP", "Zeigt Erze in der Naehe als Boxen - auch durch Waende.", Category.SICHT);
+            super("Erz-ESP", "Zeigt Erze als Boxen durch Waende. Radius bis 10000 - gesehen wird alles, was dein Spiel geladen hat (Sichtweite).", Category.SICHT);
         }
 
         @Override
-        protected void onEnable() { tick = 0; }
+        protected void onEnable() { scan.clear(); }
 
         @Override
-        protected void onDisable() { hits = new ArrayList<>(); }
+        protected void onDisable() { scan.clear(); }
 
         private static int colorOf(BlockState s, boolean rare) {
             if (s.is(BlockTags.DIAMOND_ORES)) return 0xFF4DEEEA;
@@ -300,42 +356,24 @@ public final class Modules {
 
         @Override
         public void onTick(Minecraft mc) {
-            if (tick++ % 20 != 0) return;
-            int r = (int) range.value;
-            BlockPos c = mc.player.blockPosition();
-            BlockPos.MutableBlockPos m = new BlockPos.MutableBlockPos();
             boolean rare = onlyRare.on;
-            List<int[]> found = new ArrayList<>();
-            for (int dx = -r; dx <= r; dx++) {
-                for (int dy = -r; dy <= r; dy++) {
-                    for (int dz = -r; dz <= r; dz++) {
-                        m.set(c.getX() + dx, c.getY() + dy, c.getZ() + dz);
-                        BlockState s = mc.level.getBlockState(m);
-                        if (s.isAir()) continue;
-                        int col = colorOf(s, rare);
-                        if (col != 0) found.add(new int[]{m.getX(), m.getY(), m.getZ(), col});
-                    }
-                }
-            }
-            found.sort(Comparator.comparingDouble((int[] a) -> {
-                double ddx = a[0] - c.getX(), ddy = a[1] - c.getY(), ddz = a[2] - c.getZ();
-                return ddx * ddx + ddy * ddy + ddz * ddz;
-            }));
-            hits = found.size() > 250 ? new ArrayList<>(found.subList(0, 250)) : found;
+            scan.tick(mc, (int) range.value, 3, (int) maxBoxes.value, s -> colorOf(s, rare));
         }
 
         @Override
         public void onEsp(GuiGraphics g, Minecraft mc, Cam cam) {
             double[] r = new double[4];
-            for (int[] h : hits) {
+            int n = 0;
+            for (int[] h : scan.hits()) {
                 AABB b = new AABB(h[0], h[1], h[2], h[0] + 1, h[1] + 1, h[2] + 1);
                 if (cam.box(b, r)) Gfx.outline(g, (int) r[0], (int) r[1], (int) r[2], (int) r[3], h[3]);
+                if (tracers.on && n++ < 15) cam.tracer(g, h[0] + 0.5, h[1] + 0.5, h[2] + 0.5, h[3]);
             }
         }
     }
 
     public static class EntityEsp extends Module {
-        final Setting range = add(Setting.number("Reichweite", 64, 16, 128, 16));
+        final Setting range = add(Setting.choice("Reichweite", 64, 16, 32, 64, 128, 256, 512, 1000, 2000, 5000, 10000));
         final Setting players = add(Setting.toggle("Spieler", true));
         final Setting mobs = add(Setting.toggle("Mobs", true));
         final Setting items = add(Setting.toggle("Items", false));
@@ -350,7 +388,7 @@ public final class Modules {
             LocalPlayer p = mc.player;
             Font f = mc.font;
             double[] r = new double[4];
-            AABB area = p.getBoundingBox().inflate(range.value);
+            AABB area = p.getBoundingBox().inflate(Math.min(range.value, 300.0));
             for (Entity e : mc.level.getEntities((Entity) null, area, x -> true)) {
                 if (e instanceof ItemEntity) {
                     if (!items.on) continue;
@@ -388,7 +426,7 @@ public final class Modules {
         private boolean wasDown;
 
         AirJump() {
-            super("AirJump", "Springen in der Luft - so oft du willst.", Category.BEWEGUNG);
+            super("AirJump", "Springen in der Luft - so oft du willst.", Category.FLUG);
         }
 
         @Override
@@ -408,7 +446,7 @@ public final class Modules {
         final Setting fall = add(Setting.number("Fallspeed", 0.05, 0.01, 0.3, 0.01));
 
         Glide() {
-            super("Glide", "Langsam herabsinken statt zu fallen.", Category.BEWEGUNG);
+            super("Glide", "Langsam herabsinken statt zu fallen.", Category.FLUG);
         }
 
         @Override
@@ -442,25 +480,41 @@ public final class Modules {
     // ================================================================ Kampf
 
     public static class AutoTotem extends Module {
+        final Setting delay = add(Setting.number("Verzoeg. Ticks", 0, 0, 10, 1));
+        final Setting hp = add(Setting.number("Nur unter HP", 20, 2, 20, 1));
+        final Setting hotbarFirst = add(Setting.toggle("Hotbar zuerst", true));
         private int cd;
 
         AutoTotem() {
-            super("AutoTotem", "Haelt immer einen Totem in der Zweithand.", Category.KAMPF);
+            super("AutoTotem", "Haelt immer einen Totem in der Zweithand - sofort nach dem Platzen, auch im Inventar-Fenster.", Category.SCHUTZ);
+        }
+
+        private static boolean isTotem(LocalPlayer p, int slot) {
+            return p.inventoryMenu.getSlot(slot).getItem().is(Items.TOTEM_OF_UNDYING);
         }
 
         @Override
         public void onTick(Minecraft mc) {
             LocalPlayer p = mc.player;
-            if (mc.gameMode == null || mc.screen != null) return;
-            if (p.getOffhandItem().is(Items.TOTEM_OF_UNDYING)) return;
-            if (cd-- > 0) return;
-            cd = 4;
-            for (int i = 9; i <= 44; i++) {
-                if (p.inventoryMenu.getSlot(i).getItem().is(Items.TOTEM_OF_UNDYING)) {
-                    mc.gameMode.handleInventoryMouseClick(p.inventoryMenu.containerId, i, 40, ClickType.SWAP, p);
-                    return;
-                }
+            if (mc.gameMode == null) return;
+            if (p.getOffhandItem().is(Items.TOTEM_OF_UNDYING)) {
+                cd = 0;
+                return;
             }
+            if (mc.screen != null && !(mc.screen instanceof InventoryScreen) && !(mc.screen instanceof ClickGui)) return;
+            if (hp.value < 20 && p.getHealth() + p.getAbsorptionAmount() > hp.value) return;
+            if (cd > 0) {
+                cd--;
+                return;
+            }
+            int found = -1;
+            if (hotbarFirst.on) {
+                for (int i = 36; i <= 44 && found < 0; i++) if (isTotem(p, i)) found = i;
+            }
+            for (int i = 9; i <= 44 && found < 0; i++) if (isTotem(p, i)) found = i;
+            if (found < 0) return;
+            mc.gameMode.handleInventoryMouseClick(p.inventoryMenu.containerId, found, 40, ClickType.SWAP, p);
+            cd = (int) delay.value;
         }
     }
 
@@ -513,7 +567,7 @@ public final class Modules {
         private int cd;
 
         AirPlace() {
-            super("AirPlace", "Bloecke mitten in die Luft setzen (Rechtsklick halten).", Category.WELT);
+            super("AirPlace", "Bloecke mitten in die Luft setzen (Rechtsklick halten).", Category.BAUEN);
         }
 
         @Override
@@ -537,7 +591,7 @@ public final class Modules {
         private int cd;
 
         Scaffold() {
-            super("Scaffold", "Setzt automatisch Bloecke unter deine Fuesse (Block in die Hand nehmen).", Category.WELT);
+            super("Scaffold", "Setzt automatisch Bloecke unter deine Fuesse (Block in die Hand nehmen).", Category.BAUEN);
         }
 
         @Override
@@ -561,7 +615,7 @@ public final class Modules {
         private BlockPos target;
 
         MineArea() {
-            super("Mine-Area", "Baut die Area ab. Ecken: Z = Pos1, X = Pos2, V = loeschen.", Category.WELT);
+            super("Mine-Area", "Baut die Area ab. Ecken: Z = Pos1, X = Pos2, V = loeschen.", Category.BAUEN);
         }
 
         @Override
@@ -676,7 +730,7 @@ public final class Modules {
         final Setting power = add(Setting.number("Kraft", 0.8, 0.5, 2.0, 0.1));
 
         HighJump() {
-            super("HighJump", "Viel hoeher springen.", Category.BEWEGUNG);
+            super("HighJump", "Viel hoeher springen.", Category.FLUG);
         }
 
         @Override
@@ -813,7 +867,7 @@ public final class Modules {
 
     public static class Info extends Module {
         Info() {
-            super("Info", "Zeigt Koordinaten, Blickrichtung und Tempo oben links.", Category.WELT);
+            super("Info", "Zeigt Koordinaten, Blickrichtung und Tempo oben links.", Category.HUD);
         }
 
         @Override
@@ -832,19 +886,18 @@ public final class Modules {
     // ================================================================ Noch mehr Sicht
 
     public static class StorageEsp extends Module {
-        final Setting range = add(Setting.number("Radius", 24, 8, 48, 4));
-        private List<int[]> hits = new ArrayList<>();
-        private int tick;
+        final Setting range = add(Setting.choice("Radius", 64, 16, 32, 64, 128, 256, 512, 1000, 2000, 5000, 10000));
+        private final ChunkScan scan = new ChunkScan();
 
         StorageEsp() {
-            super("Kisten-ESP", "Zeigt Kisten, Fasser, Enderkisten und Shulker durch Waende.", Category.SICHT);
+            super("Kisten-ESP", "Zeigt Kisten, Fasser, Enderkisten und Shulker durch Waende - Radius bis 10000 (soweit geladen).", Category.SICHT);
         }
 
         @Override
-        protected void onEnable() { tick = 0; }
+        protected void onEnable() { scan.clear(); }
 
         @Override
-        protected void onDisable() { hits = new ArrayList<>(); }
+        protected void onDisable() { scan.clear(); }
 
         private static int colorOf(BlockState s) {
             if (s.is(Blocks.CHEST)) return 0xFFFFB84D;
@@ -857,29 +910,13 @@ public final class Modules {
 
         @Override
         public void onTick(Minecraft mc) {
-            if (tick++ % 20 != 0) return;
-            int r = (int) range.value;
-            BlockPos c = mc.player.blockPosition();
-            BlockPos.MutableBlockPos m = new BlockPos.MutableBlockPos();
-            List<int[]> found = new ArrayList<>();
-            for (int dx = -r; dx <= r; dx++) {
-                for (int dy = -r; dy <= r; dy++) {
-                    for (int dz = -r; dz <= r; dz++) {
-                        m.set(c.getX() + dx, c.getY() + dy, c.getZ() + dz);
-                        BlockState s = mc.level.getBlockState(m);
-                        if (s.isAir()) continue;
-                        int col = colorOf(s);
-                        if (col != 0) found.add(new int[]{m.getX(), m.getY(), m.getZ(), col});
-                    }
-                }
-            }
-            hits = found.size() > 200 ? new ArrayList<>(found.subList(0, 200)) : found;
+            scan.tick(mc, (int) range.value, 3, 300, StorageEsp::colorOf);
         }
 
         @Override
         public void onEsp(GuiGraphics g, Minecraft mc, Cam cam) {
             double[] r = new double[4];
-            for (int[] h : hits) {
+            for (int[] h : scan.hits()) {
                 AABB b = new AABB(h[0], h[1], h[2], h[0] + 1, h[1] + 1, h[2] + 1);
                 if (cam.box(b, r)) Gfx.outline(g, (int) r[0], (int) r[1], (int) r[2], (int) r[3], h[3]);
             }
@@ -905,13 +942,15 @@ public final class Modules {
         final Setting maceFall = add(Setting.toggle("Mace beim Fallen", true));
         final Setting back = add(Setting.toggle("Zurueckwechseln", true));
         final Setting charge = add(Setting.toggle("Charge (Rechtsklick)", false));
+        final Setting oneshot = add(Setting.toggle("OneShot (Fake-Fall)", true));
+        final Setting fallH = add(Setting.number("Fake-Fall Hoehe", 30, 8, 80, 4));
         final Setting players = add(Setting.toggle("Spieler", true));
         final Setting mobs = add(Setting.toggle("Mobs", true));
         private int restore = -1;
         private boolean charging;
 
         SpearMace() {
-            super("Speer/Mace", "Wechselt automatisch Speer und Streitkolben (Mace) und greift Ziele an. Waffen in die Hotbar legen.", Category.KAMPF);
+            super("Speer/Mace", "Wechselt automatisch Speer und Streitkolben (Mace) und greift Ziele an. Waffen in die Hotbar legen.", Category.COMBO);
         }
 
         @Override
@@ -945,6 +984,7 @@ public final class Modules {
         private void hit(Minecraft mc, int slot, Entity t) {
             LocalPlayer p = mc.player;
             p.getInventory().setSelectedSlot(slot);
+            if (oneshot.on && slot == findHotbar(p, "mace")) Combo.fakeFall(mc, fallH.value);
             mc.gameMode.attack(p, t);
             p.swing(InteractionHand.MAIN_HAND);
         }
@@ -1042,7 +1082,7 @@ public final class Modules {
         private boolean eating;
 
         AutoEat() {
-            super("AutoEat", "Isst automatisch Essen aus der Hotbar, wenn du hungrig wirst.", Category.KAMPF);
+            super("AutoEat", "Isst automatisch Essen aus der Hotbar, wenn du hungrig wirst.", Category.SCHUTZ);
         }
 
         private static boolean badFood(String path) {
@@ -1091,7 +1131,7 @@ public final class Modules {
     /** Waehlt beim Abbauen automatisch das schnellste Werkzeug aus der Hotbar. */
     public static class AutoTool extends Module {
         AutoTool() {
-            super("AutoTool", "Nimmt beim Abbauen automatisch das beste Werkzeug aus der Hotbar.", Category.WELT);
+            super("AutoTool", "Nimmt beim Abbauen automatisch das beste Werkzeug aus der Hotbar.", Category.BAUEN);
         }
 
         @Override
