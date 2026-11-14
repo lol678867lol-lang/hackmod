@@ -2,7 +2,7 @@ package de.hackmod;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
@@ -18,7 +18,7 @@ public final class Cam {
 
     public Cam(Minecraft mc, float pt) {
         this.pt = pt;
-        LocalPlayer p = mc.player;
+        Entity p = mc.getCameraEntity() != null ? mc.getCameraEntity() : mc.player;
         Vec3 eye = p.getEyePosition(pt);
         ex = eye.x;
         ey = eye.y;

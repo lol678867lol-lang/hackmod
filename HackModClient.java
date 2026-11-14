@@ -19,6 +19,8 @@ public class HackModClient implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
         Modules.init();
+        Bot.init();
+        Structs.init();
 
         KeyMapping.Category category = KeyMapping.Category.register(
                 Identifier.fromNamespaceAndPath("hackmod", "main"));
@@ -37,10 +39,12 @@ public class HackModClient implements ClientModInitializer {
                 FabricLoader.getInstance().getModContainer("hackmod").orElseThrow(),
                 Component.literal("HackMod X-Ray"), PackActivationType.NORMAL);
 
+        ClientTickEvents.START_CLIENT_TICK.register(mc -> Modules.preTick(mc));
+
         ClientTickEvents.END_CLIENT_TICK.register(mc -> {
-            while (pos1.consumeClick()) Area.set(mc, 1);
-            while (pos2.consumeClick()) Area.set(mc, 2);
-            while (clearArea.consumeClick()) Area.clear(mc);
+            while (pos1.consumeClick()) { if (Modules.mineAreaOn()) Area.set(mc, 1); }
+            while (pos2.consumeClick()) { if (Modules.mineAreaOn()) Area.set(mc, 2); }
+            while (clearArea.consumeClick()) { if (Modules.mineAreaOn()) Area.clear(mc); }
             while (openGui.consumeClick()) {
                 if (mc.screen == null && mc.player != null) mc.setScreen(new ClickGui());
             }

@@ -121,7 +121,7 @@ final class ChunkScan {
         }
     }
 
-    private static List<int[]> scan(LevelChunk ch, int cx, int cz, Matcher m) {
+    static List<int[]> scan(LevelChunk ch, int cx, int cz, Matcher m) {
         List<int[]> out = new ArrayList<>();
         LevelChunkSection[] secs = ch.getSections();
         // Overworld: 24 Sektionen ab Y=-64 (Sektion -4). Nether/Ende: 16 Sektionen ab Y=0.

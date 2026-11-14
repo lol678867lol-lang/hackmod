@@ -45,6 +45,9 @@ public abstract class Module {
     protected void onEnable() {}
     protected void onDisable() {}
 
+    /** Wird am ANFANG jedes Client-Ticks aufgerufen (vor deinen Klicks und der Bewegung). */
+    public void onPreTick(Minecraft mc) {}
+
     /** Wird jeden Client-Tick aufgerufen, solange das Modul an ist. */
     public void onTick(Minecraft mc) {}
 

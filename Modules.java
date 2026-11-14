@@ -115,6 +115,8 @@ public final class Modules {
         ALL.add(new Combo.SpearCombo());
         ALL.add(new Combo.MaceKill());
         ALL.add(new Combo.WindBoost());
+        ALL.add(new Extra2.LungeSwap());
+        ALL.add(new Extra2.SpearKill());
         ALL.add(new Aura.CrystalAura());
         ALL.add(new Aura.AnchorAura());
         ALL.add(new Extra.AutoGapple());
@@ -134,6 +136,9 @@ public final class Modules {
         ALL.add(new Extra.SpawnerEsp());
         ALL.add(new Extra.ItemEsp());
         ALL.add(new Extra.TargetEsp());
+        ALL.add(new Extra2.Freecam());
+        ALL.add(new Extra3.SeedXray());
+        ALL.add(new Structs.Finder());
         ALL.add(new Extra.Radar());
         ALL.add(new Extra.TotemCount());
         ALL.add(new Extra.ArmorHud());
@@ -149,8 +154,20 @@ public final class Modules {
         return out;
     }
 
+    /** Die Eck-Markierungen (Z/X/V) gibt es nur, solange Mine-Area eingeschaltet ist. */
+    static boolean mineAreaOn() {
+        for (Module m : ALL) if (m instanceof MineArea && m.enabled) return true;
+        return false;
+    }
+
+    public static void preTick(Minecraft mc) {
+        if (mc.player == null || mc.level == null) return;
+        for (Module m : ALL) if (m.enabled) m.onPreTick(mc);
+    }
+
     public static void tick(Minecraft mc) {
         if (mc.player == null || mc.level == null) return;
+        Combo.globalTick(mc);
         for (Module m : ALL) if (m.enabled) m.onTick(mc);
     }
 
@@ -162,12 +179,12 @@ public final class Modules {
 
         if (mc.options.getCameraType().isFirstPerson()) {
             Cam cam = new Cam(mc, pt);
-            Area.draw(g, mc, cam);
+            if (mineAreaOn()) Area.draw(g, mc, cam);
             for (Module m : ALL) if (m.enabled) m.onEsp(g, mc, cam);
         }
 
         g.drawString(f, "HackMod", 4, 4, Gfx.accent(0));
-        if (Area.isSet()) g.drawString(f, "Area " + Area.sizeText(), 4, 15, 0xFFFFFFFF);
+        if (mineAreaOn() && Area.isSet()) g.drawString(f, "Area " + Area.sizeText(), 4, 15, 0xFFFFFFFF);
 
         for (Module m : ALL) if (m.enabled) m.onHud(g, mc);
 
@@ -339,7 +356,7 @@ public final class Modules {
         @Override
         protected void onDisable() { scan.clear(); }
 
-        private static int colorOf(BlockState s, boolean rare) {
+        static int colorOf(BlockState s, boolean rare) {
             if (s.is(BlockTags.DIAMOND_ORES)) return 0xFF4DEEEA;
             if (s.is(BlockTags.EMERALD_ORES)) return 0xFF17DD62;
             if (s.is(Blocks.ANCIENT_DEBRIS)) return 0xFFB5533C;
@@ -876,7 +893,7 @@ public final class Modules {
             Font f = mc.font;
             Vec3 m = p.getDeltaMovement();
             double speed = Math.sqrt(m.x * m.x + m.z * m.z) * 20.0;
-            int y = Area.isSet() ? 27 : 16;
+            int y = (mineAreaOn() && Area.isSet()) ? 27 : 16;
             g.drawString(f, "XYZ  " + (int) Math.floor(p.getX()) + "  " + (int) Math.floor(p.getY()) + "  " + (int) Math.floor(p.getZ()), 4, y, 0xFFFFFFFF);
             g.drawString(f, "Blick  " + p.getDirection().getName(), 4, y + 11, 0xFFC8C8D8);
             g.drawString(f, "Tempo  " + String.format("%.1f", speed) + " b/s", 4, y + 22, 0xFFC8C8D8);
@@ -943,7 +960,7 @@ public final class Modules {
         final Setting back = add(Setting.toggle("Zurueckwechseln", true));
         final Setting charge = add(Setting.toggle("Charge (Rechtsklick)", false));
         final Setting oneshot = add(Setting.toggle("OneShot (Fake-Fall)", true));
-        final Setting fallH = add(Setting.number("Fake-Fall Hoehe", 30, 8, 80, 4));
+        final Setting fallH = add(Combo.fallSetting());
         final Setting players = add(Setting.toggle("Spieler", true));
         final Setting mobs = add(Setting.toggle("Mobs", true));
         private int restore = -1;

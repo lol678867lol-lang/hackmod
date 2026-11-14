@@ -4,6 +4,8 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.Mth;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.Entity;
@@ -15,6 +17,7 @@ import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 /** Speer-/Mace-Kombos, OneShot (Fake-Fall), Windcharge-Boosts und gemeinsame Helfer. */
 public final class Combo {
@@ -50,23 +53,53 @@ public final class Combo {
         p.getInventory().setSelectedSlot(prev);
     }
 
+    /** Stufen fuer die Fake-Fall-Hoehe (bis 100000 Bloecke). */
+    static Setting fallSetting() {
+        return Setting.choice("Fake-Fall Hoehe", 64, 8, 16, 32, 64, 128, 256, 512, 1000, 5000, 10000, 50000, 100000);
+    }
+
+    /** Auf fremden Servern ist die Hoehe begrenzt (Tempo-Pruefung und Paket-Limit des Servers). */
+    private static final double REMOTE_MAX = 600.0;
+    private static int resetIn = -1;
+
     /**
-     * OneShot: taeuscht dem Server eine grosse Fallhoehe vor (hoch und wieder runter in kleinen Schritten),
-     * damit der naechste Mace-Schlag den vollen Smash-Schaden macht. Klappt nur auf Servern ohne
-     * Anti-Cheat gegen diesen Trick.
+     * OneShot: taeuscht dem Server eine grosse Fallhoehe vor (hoch und wieder runter), damit der naechste
+     * Mace-Schlag den vollen Smash-Schaden macht. Im Einzelspieler / als LAN-Host geht es in 2 Paketen bis
+     * 100000 Bloecke (der eigene Server prueft das Tempo nicht). Auf fremden Servern wird in 8-Block-Schritten
+     * gearbeitet und bei 600 Bloecken gekappt.
+     * ACHTUNG: Trifft der Mace-Schlag nicht, bleibt die Fallhoehe stehen und du nimmst beim Landen Schaden.
+     * Im Einzelspieler setze ich sie deshalb kurz nach dem Schlag automatisch zurueck.
      */
     static void fakeFall(Minecraft mc, double height) {
         LocalPlayer p = mc.player;
         if (p == null || mc.getConnection() == null || height < 2) return;
+        boolean host = mc.getSingleplayerServer() != null;
+        double h = host ? height : Math.min(height, REMOTE_MAX);
         double x = p.getX(), y = p.getY(), z = p.getZ();
-        int steps = (int) Math.ceil(height / 8.0);
-        double h = height / steps;
+        int steps = host ? 1 : (int) Math.ceil(h / 8.0);
+        double st = h / steps;
         for (int i = 1; i <= steps; i++) {
-            mc.getConnection().send(new ServerboundMovePlayerPacket.Pos(x, y + h * i, z, false, false));
+            mc.getConnection().send(new ServerboundMovePlayerPacket.Pos(x, y + st * i, z, false, false));
         }
         for (int i = steps - 1; i >= 0; i--) {
-            mc.getConnection().send(new ServerboundMovePlayerPacket.Pos(x, y + h * i, z, false, false));
+            mc.getConnection().send(new ServerboundMovePlayerPacket.Pos(x, y + st * i, z, false, false));
         }
+        if (host) resetIn = 4;
+    }
+
+    /** Wird jeden Tick aufgerufen: setzt im Einzelspieler die Fallhoehe nach einem Fake-Fall zurueck. */
+    static void globalTick(Minecraft mc) {
+        if (resetIn < 0) return;
+        if (resetIn-- > 0) return;
+        resetIn = -1;
+        MinecraftServer server = mc.getSingleplayerServer();
+        if (server == null || mc.player == null) return;
+        UUID id = mc.player.getUUID();
+        server.execute(() -> {
+            for (ServerPlayer sp : server.getPlayerList().getPlayers()) {
+                if (sp.getUUID().equals(id)) sp.resetFallDistance();
+            }
+        });
     }
 
     static boolean isTarget(LocalPlayer p, Entity e, boolean players, boolean mobs) {
@@ -114,7 +147,7 @@ public final class Combo {
         final Setting wind = add(Setting.toggle("Windcharge hoch", true));
         final Setting pearl = add(Setting.toggle("Pearl-Catch", false));
         final Setting oneshot = add(Setting.toggle("OneShot (Fake-Fall)", true));
-        final Setting fall = add(Setting.number("Fake-Fall Hoehe", 30, 8, 80, 4));
+        final Setting fall = add(fallSetting());
         final Setting dash = add(Setting.number("Dash-Tempo", 1.6, 0.5, 4.0, 0.1));
         final Setting players = add(Setting.toggle("Spieler", true));
         final Setting mobs = add(Setting.toggle("Mobs", false));
@@ -268,7 +301,7 @@ public final class Combo {
 
     /** Mace in der Hand + Ziel im Fadenkreuz: Fake-Fall und Schlag -> voller Smash-Schaden. */
     public static class MaceKill extends Module {
-        final Setting fall = add(Setting.number("Fake-Fall Hoehe", 30, 8, 80, 4));
+        final Setting fall = add(fallSetting());
         final Setting players = add(Setting.toggle("Spieler", true));
         final Setting mobs = add(Setting.toggle("Mobs", true));
 
