@@ -505,16 +505,18 @@ public final class Aura {
         final Setting reach = add(Setting.number("Reichweite", 4.5, 3.0, 5.5, 0.5));
         final Setting dbl = add(Setting.toggle("Doppelschlag (D-Tap)", true));
         final Setting onlyPlayers = add(Setting.toggle("Nur Spieler", true));
+        final Setting placeObi = add(Setting.toggle("Obsidian setzen", true));
         final Setting selfCheck = add(Setting.toggle("Selbstschutz", true));
         final Setting maxSelf = add(Setting.number("Max. Schaden dir", 15, 1, 30, 1));
         final Setting safeHp = add(Setting.number("Stopp unter HP", 6, 0, 19, 1));
         private boolean wasDown;
+        private LivingEntity pending;
         private LivingEntity target;
         private int left, timeout;
         private String status = "bereit";
 
         DTap() {
-            super("D-Tap / Triple-Pop", "Hast du Kristalle + Obsidian-Basis bereit und schlaegst einen Gegner, startet eine Serie: Kristall setzen, sofort doppelt zerschlagen, mehrfach (Totem-Pops).", Category.CRYSTAL);
+            super("D-Tap / Triple-Pop", "Kristalle (und Obsidian) in der Hotbar: sobald du einen Gegner schlaegst, setzt die Mod Obsidian + Kristall und zerschlaegt ihn doppelt, mehrfach (Totem-Pops).", Category.CRYSTAL);
         }
 
         @Override
@@ -562,18 +564,81 @@ public final class Aura {
             drawStatus(g, mc, "D-Tap", status);
         }
 
+        /** Gegner im Fadenkreuz oder (falls keiner getroffen wird) in der Blickrichtung innerhalb von 6 Bloecken. */
+        private LivingEntity aimed(Minecraft mc, LocalPlayer p) {
+            if (mc.hitResult instanceof EntityHitResult ehr && ehr.getEntity() instanceof LivingEntity le) return le;
+            Vec3 eye = p.getEyePosition(), look = p.getViewVector(1.0F);
+            LivingEntity best = null;
+            double bestDot = 0.95;
+            for (LivingEntity e : Combo.targets(mc, 6.0, true, !onlyPlayers.on)) {
+                Vec3 d = e.getBoundingBox().getCenter().subtract(eye);
+                double len = d.length();
+                if (len < 0.01) continue;
+                double dot = d.dot(look) / len;
+                if (dot > bestDot) {
+                    bestDot = dot;
+                    best = e;
+                }
+            }
+            return best;
+        }
+
+        /** Erkennt den Schlag am Anfang des Ticks (Linksklick), bevor er verarbeitet wird. */
+        @Override
+        public void onPreTick(Minecraft mc) {
+            LocalPlayer p = mc.player;
+            if (p == null) return;
+            boolean down = mc.options.keyAttack.isDown();
+            boolean edge = down && !wasDown;
+            wasDown = down;
+            if (!edge || mc.screen != null || target != null) return;
+            LivingEntity le = aimed(mc, p);
+            if (le == null || (onlyPlayers.on && !(le instanceof Player))) return;
+            pending = le;
+        }
+
+        /** Obsidian neben das Ziel setzen, falls keine Basis da ist. */
+        private boolean placeObsidian(Minecraft mc, LocalPlayer p, LivingEntity t) {
+            int obi = exact(p, "obsidian");
+            if (obi < 0) return false;
+            BlockPos tb = t.blockPosition();
+            Vec3 tp = t.position(), eye = p.getEyePosition();
+            BlockPos best = null;
+            double bestScore = -1e9;
+            for (int dx = -3; dx <= 3; dx++) {
+                for (int dz = -3; dz <= 3; dz++) {
+                    if (dx == 0 && dz == 0) continue;
+                    BlockPos cell = new BlockPos(tb.getX() + dx, tb.getY(), tb.getZ() + dz);
+                    if (!mc.level.getBlockState(cell).canBeReplaced()) continue;
+                    if (mc.level.getBlockState(cell.below()).getCollisionShape(mc.level, cell.below()).isEmpty()) continue;
+                    if (!mc.level.getBlockState(cell.above()).isAir() || !mc.level.getBlockState(cell.above(2)).isAir()) continue;
+                    if (!freeSpace(p, t, cell)) continue;
+                    if (eye.distanceTo(Vec3.atCenterOf(cell)) > reach.value) continue;
+                    Vec3 c = new Vec3(cell.getX() + 0.5, cell.getY() + 1.0, cell.getZ() + 0.5);
+                    double dt = estimate(c, tp, 6.0);
+                    double ds = selfCheck.on ? selfDamage(p, c, 6.0, 0.5) : 0.0;
+                    if (dt < 4.0 || ds > limit(p)) continue;
+                    if (dt - ds > bestScore) {
+                        bestScore = dt - ds;
+                        best = cell;
+                    }
+                }
+            }
+            if (best == null) return false;
+            final BlockPos s = best;
+            withSlot(mc, obi, () -> Modules.placeBlockAt(mc, s));
+            return true;
+        }
+
         @Override
         public void onTick(Minecraft mc) {
             LocalPlayer p = mc.player;
             if (mc.gameMode == null) return;
-            boolean down = mc.options.keyAttack.isDown();
-            boolean edge = down && !wasDown;
-            wasDown = down;
 
             if (target == null) {
-                if (!edge || mc.screen != null) return;
-                if (!(mc.hitResult instanceof EntityHitResult ehr) || !(ehr.getEntity() instanceof LivingEntity le)) return;
-                if (onlyPlayers.on && !(le instanceof Player)) return;
+                if (pending == null) return;
+                LivingEntity le = pending;
+                pending = null;
                 boolean off = path(p.getOffhandItem()).equals("end_crystal");
                 if (!off && exact(p, "end_crystal") < 0) {
                     status = "keine Kristalle in Hotbar/Zweithand";
@@ -621,8 +686,12 @@ public final class Aura {
             // Kristall setzen
             BlockPos b = base(mc, p, target);
             if (b == null) {
+                if (placeObi.on && placeObsidian(mc, p, target)) {
+                    status = "Obsidian gesetzt";
+                    return;
+                }
                 target = null;
-                status = "keine Obsidian-Basis in Reichweite";
+                status = "keine Obsidian-Basis (Obsidian in die Hotbar legen)";
                 return;
             }
             boolean off = path(p.getOffhandItem()).equals("end_crystal");
