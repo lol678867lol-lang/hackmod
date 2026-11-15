@@ -2,6 +2,9 @@ package de.hackmod;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import net.minecraft.client.player.LocalPlayer;
+import org.lwjgl.glfw.GLFW;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.chunk.LevelChunk;
@@ -144,6 +147,53 @@ public final class Extra3 {
                     ? "Seed-XRay: nur Einzelspieler / LAN-Host"
                     : "Seed-XRay: " + found.size() + " Chunks gescannt, " + draw.size() + " Erze";
             g.drawString(mc.font, t, 6, 40, noServer ? 0xFFFF6666 : 0xFF66FFAA, true);
+        }
+    }
+
+    /** Inv-Move: laufen, springen, sprinten und sneaken, waehrend Inventar oder Kisten offen sind (WASD, Leertaste, Strg, Shift). */
+    public static class InvMove extends Module {
+        final Setting containers = add(Setting.toggle("Auch Kisten & Co.", true));
+        final Setting arrows = add(Setting.toggle("Pfeiltasten drehen", true));
+        final Setting turn = add(Setting.number("Drehtempo", 5, 1, 12, 1));
+
+        InvMove() {
+            super("Inv-Move", "Laufen, springen und sprinten bei offenem Inventar (WASD, Leertaste, Strg, Shift). Pfeiltasten drehen die Kamera.", Category.BEWEGUNG);
+        }
+
+        private boolean allowed(Minecraft mc) {
+            if (mc.screen == null || mc.screen instanceof ClickGui) return false;
+            String n = mc.screen.getClass().getSimpleName();
+            if (n.contains("Anvil") || n.contains("Creative") || n.contains("Book") || n.contains("Sign")
+                    || n.contains("Chat") || n.contains("Edit") || n.contains("Command")) return false;
+            if (n.equals("InventoryScreen")) return true;
+            return containers.on && mc.screen instanceof AbstractContainerScreen;
+        }
+
+        private static boolean down(long win, int key) {
+            return GLFW.glfwGetKey(win, key) == GLFW.GLFW_PRESS;
+        }
+
+        @Override
+        public void onPreTick(Minecraft mc) {
+            LocalPlayer p = mc.player;
+            if (p == null || !allowed(mc)) return;
+            long win = GLFW.glfwGetCurrentContext();
+            mc.options.keyUp.setDown(down(win, GLFW.GLFW_KEY_W));
+            mc.options.keyDown.setDown(down(win, GLFW.GLFW_KEY_S));
+            mc.options.keyLeft.setDown(down(win, GLFW.GLFW_KEY_A));
+            mc.options.keyRight.setDown(down(win, GLFW.GLFW_KEY_D));
+            mc.options.keyJump.setDown(down(win, GLFW.GLFW_KEY_SPACE));
+            mc.options.keyShift.setDown(down(win, GLFW.GLFW_KEY_LEFT_SHIFT));
+            if (down(win, GLFW.GLFW_KEY_LEFT_CONTROL)) mc.options.keySprint.setDown(true);
+            if (arrows.on) {
+                float yaw = p.getYRot(), pitch = p.getXRot();
+                if (down(win, GLFW.GLFW_KEY_LEFT)) yaw -= (float) turn.value;
+                if (down(win, GLFW.GLFW_KEY_RIGHT)) yaw += (float) turn.value;
+                if (down(win, GLFW.GLFW_KEY_UP)) pitch -= (float) turn.value;
+                if (down(win, GLFW.GLFW_KEY_DOWN)) pitch += (float) turn.value;
+                p.setYRot(yaw);
+                p.setXRot(Math.max(-90.0F, Math.min(90.0F, pitch)));
+            }
         }
     }
 }

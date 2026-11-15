@@ -14,7 +14,9 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.RespawnAnchorBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.Vec3;
 
 /** CrystalAura (Obsidian + Enderkristalle) und AnchorAura (Respawn-Anker + Glowstone mit Schild). */
@@ -83,6 +85,25 @@ public final class Aura {
         return !p.getBoundingBox().intersects(box) && !t.getBoundingBox().intersects(box);
     }
 
+    private static boolean crystalAtPos(Minecraft mc, BlockPos pos) {
+        for (Entity e : mc.level.getEntities((Entity) null, new AABB(pos), x -> true)) {
+            if (isCrystal(e)) return true;
+        }
+        return false;
+    }
+
+    /** Hotbar-Slot der besten Nahkampfwaffe (Mace > Schwert > Axt), sonst -1. */
+    private static int weaponSlot(LocalPlayer p) {
+        int sword = -1, axe = -1;
+        for (int i = 0; i < 9; i++) {
+            String n = path(p.getInventory().getItem(i));
+            if (n.equals("mace")) return i;
+            if (n.endsWith("_sword") && sword < 0) sword = i;
+            if (n.endsWith("_axe") && axe < 0) axe = i;
+        }
+        return sword >= 0 ? sword : axe;
+    }
+
     private static void drawStatus(GuiGraphics g, Minecraft mc, String name, String status) {
         int W = mc.getWindow().getGuiScaledWidth(), H = mc.getWindow().getGuiScaledHeight();
         String s = name + ": " + status;
@@ -104,7 +125,10 @@ public final class Aura {
         final Setting breakOn = add(Setting.toggle("Kristalle zerschlagen", true));
         final Setting players = add(Setting.toggle("Spieler", true));
         final Setting mobs = add(Setting.toggle("Mobs", true));
+        final Setting launch = add(Setting.toggle("Hochschlagen", true));
+        final Setting launchGap = add(Setting.number("Hoch-Pause (Ticks)", 10, 4, 40, 1));
         private int cd;
+        private int launchCd;
         private String status = "bereit";
 
         CrystalAura() {
@@ -209,6 +233,23 @@ public final class Aura {
             }
             Vec3 tp = t.position();
 
+            // 0) Gegner mit Mace/Schwert/Axt hochschlagen, dann kommen die Kristalle
+            if (launchCd > 0) launchCd--;
+            if (launch.on && launchCd == 0 && p.distanceTo(t) <= 3.0 && p.getAttackStrengthScale(0.0F) >= 0.9F) {
+                int w = weaponSlot(p);
+                if (w >= 0) {
+                    final LivingEntity tt = t;
+                    withSlot(mc, w, () -> {
+                        mc.gameMode.attack(p, tt);
+                        p.swing(InteractionHand.MAIN_HAND);
+                    });
+                    status = "Gegner hochgeschlagen";
+                    launchCd = (int) launchGap.value;
+                    cd = (int) delay.value;
+                    return;
+                }
+            }
+
             // 1) Kristalle zerschlagen
             if (breakOn.on) {
                 Entity best = null;
@@ -293,7 +334,7 @@ public final class Aura {
         private String status = "bereit";
 
         AnchorAura() {
-            super("AnchorAura", "Respawn-Anker neben den Gegner, mit Glowstone laden und sprengen. Setzt vorher Glowstone als Schild vor dich. Anker + Glowstone in die Hotbar. Geht NICHT im Nether. Unten steht, was gerade fehlt.", Category.CRYSTAL);
+            super("AnchorAura", "Respawn-Anker neben den Gegner, mit Glowstone laden und sprengen. Das Glowstone-Schild kommt erst direkt vor dem Zuenden, der Weg zum Gegner bleibt frei. Anker + Glowstone in die Hotbar. Geht NICHT im Nether. Unten steht, was gerade fehlt.", Category.CRYSTAL);
         }
 
         private double limit(LocalPlayer p) {
@@ -351,7 +392,7 @@ public final class Aura {
         /** Setzt Glowstone zwischen dich und den Gegner (Fuss- und Kopfhoehe). true = in diesem Tick etwas gesetzt. */
         private boolean placeShield(Minecraft mc, LocalPlayer p, LivingEntity t, int glow, BlockPos anchor) {
             if (glow < 0) return false;
-            Vec3 d = t.position().subtract(p.position());
+            Vec3 d = Vec3.atCenterOf(anchor).subtract(p.position());
             Direction dir = Direction.getApproximateNearest(d.x, 0.0, d.z);
             BlockPos s1 = p.blockPosition().relative(dir);
             BlockPos[] cells = {s1, s1.above()};
@@ -411,11 +452,6 @@ public final class Aura {
                     status = "kein Respawn-Anker in der Hotbar";
                     return;
                 }
-                if (shielded && placeShield(mc, p, t, glow, null)) {
-                    status = "Glowstone-Schild gesetzt";
-                    cd = (int) delay.value;
-                    return;
-                }
                 BlockPos spot = bestAnchorSpot(mc, p, t, shielded);
                 if (spot == null) {
                     status = "keine passende Stelle (Reichweite, Abstand oder Selbstschaden - Selbstschutz aus?)";
@@ -424,13 +460,6 @@ public final class Aura {
                 final BlockPos s = spot;
                 withSlot(mc, a, () -> Modules.placeBlockAt(mc, s));
                 status = "Anker gesetzt";
-                cd = (int) delay.value;
-                return;
-            }
-
-            // Schild immer zuerst nachsetzen
-            if (shielded && placeShield(mc, p, t, glow, anchor)) {
-                status = "Glowstone-Schild gesetzt";
                 cd = (int) delay.value;
                 return;
             }
@@ -448,6 +477,13 @@ public final class Aura {
                 return;
             }
 
+            // Schild erst jetzt, direkt vor dem Zuenden (so wird dir der Weg zum Gegner nicht verbaut)
+            if (shielded && placeShield(mc, p, t, glow, anchor)) {
+                status = "Glowstone-Schild gesetzt";
+                cd = (int) delay.value;
+                return;
+            }
+
             // Geladen: mit etwas anderem als Glowstone benutzen = Explosion
             int other = nonGlowSlot(p);
             if (other < 0) {
@@ -458,6 +494,148 @@ public final class Aura {
             withSlot(mc, other, () -> useOn(mc, InteractionHand.MAIN_HAND, an, Direction.UP));
             status = "Anker gezuendet";
             cd = (int) delay.value;
+        }
+    }
+
+    // ------------------------------------------------------------------ DTap
+
+    /** Schlaegst du mit Kristallen in der Hotbar einen Gegner, startet automatisch eine Kristall-Serie (Triple-Pop / D-Tap). */
+    public static class DTap extends Module {
+        final Setting cycles = add(Setting.number("Pops (Zyklen)", 3, 1, 6, 1));
+        final Setting reach = add(Setting.number("Reichweite", 4.5, 3.0, 5.5, 0.5));
+        final Setting dbl = add(Setting.toggle("Doppelschlag (D-Tap)", true));
+        final Setting onlyPlayers = add(Setting.toggle("Nur Spieler", true));
+        final Setting selfCheck = add(Setting.toggle("Selbstschutz", true));
+        final Setting maxSelf = add(Setting.number("Max. Schaden dir", 15, 1, 30, 1));
+        final Setting safeHp = add(Setting.number("Stopp unter HP", 6, 0, 19, 1));
+        private boolean wasDown;
+        private LivingEntity target;
+        private int left, timeout;
+        private String status = "bereit";
+
+        DTap() {
+            super("D-Tap / Triple-Pop", "Hast du Kristalle + Obsidian-Basis bereit und schlaegst einen Gegner, startet eine Serie: Kristall setzen, sofort doppelt zerschlagen, mehrfach (Totem-Pops).", Category.CRYSTAL);
+        }
+
+        @Override
+        protected void onDisable() {
+            target = null;
+            wasDown = false;
+        }
+
+        private double limit(LocalPlayer p) {
+            return Math.min(maxSelf.value, p.getHealth() + p.getAbsorptionAmount() - safeHp.value);
+        }
+
+        private BlockPos base(Minecraft mc, LocalPlayer p, LivingEntity t) {
+            BlockPos tb = t.blockPosition();
+            Vec3 tp = t.position(), eye = p.getEyePosition();
+            BlockPos best = null;
+            double bestScore = -1e9;
+            BlockPos.MutableBlockPos m = new BlockPos.MutableBlockPos();
+            for (int dx = -3; dx <= 3; dx++) {
+                for (int dy = -2; dy <= 1; dy++) {
+                    for (int dz = -3; dz <= 3; dz++) {
+                        m.set(tb.getX() + dx, tb.getY() + dy, tb.getZ() + dz);
+                        String bn = blockName(mc.level.getBlockState(m));
+                        if (!bn.equals("obsidian") && !bn.equals("bedrock")) continue;
+                        BlockPos b = m.immutable();
+                        if (!mc.level.getBlockState(b.above()).isAir() || !mc.level.getBlockState(b.above(2)).isAir()) continue;
+                        if (eye.distanceTo(Vec3.atCenterOf(b)) > reach.value) continue;
+                        if (crystalAtPos(mc, b.above())) continue;
+                        Vec3 c = new Vec3(b.getX() + 0.5, b.getY() + 1.0, b.getZ() + 0.5);
+                        double dt = estimate(c, tp, 6.0);
+                        double ds = selfCheck.on ? selfDamage(p, c, 6.0, 0.5) : 0.0;
+                        if (dt < 4.0 || ds > limit(p)) continue;
+                        if (dt - ds > bestScore) {
+                            bestScore = dt - ds;
+                            best = b;
+                        }
+                    }
+                }
+            }
+            return best;
+        }
+
+        @Override
+        public void onHud(GuiGraphics g, Minecraft mc) {
+            drawStatus(g, mc, "D-Tap", status);
+        }
+
+        @Override
+        public void onTick(Minecraft mc) {
+            LocalPlayer p = mc.player;
+            if (mc.gameMode == null) return;
+            boolean down = mc.options.keyAttack.isDown();
+            boolean edge = down && !wasDown;
+            wasDown = down;
+
+            if (target == null) {
+                if (!edge || mc.screen != null) return;
+                if (!(mc.hitResult instanceof EntityHitResult ehr) || !(ehr.getEntity() instanceof LivingEntity le)) return;
+                if (onlyPlayers.on && !(le instanceof Player)) return;
+                boolean off = path(p.getOffhandItem()).equals("end_crystal");
+                if (!off && exact(p, "end_crystal") < 0) {
+                    status = "keine Kristalle in Hotbar/Zweithand";
+                    return;
+                }
+                target = le;
+                left = (int) cycles.value;
+                timeout = 60;
+                status = "Serie gestartet";
+            }
+
+            if (!target.isAlive() || --timeout < 0 || left <= 0) {
+                target = null;
+                status = "Serie beendet";
+                return;
+            }
+            if (p.getHealth() + p.getAbsorptionAmount() <= safeHp.value) {
+                target = null;
+                status = "zu wenig Leben";
+                return;
+            }
+
+            // Kristall zerschlagen (optional doppelt = D-Tap)
+            Entity best = null;
+            double bd = 1e9;
+            for (Entity e : mc.level.getEntities((Entity) null, target.getBoundingBox().inflate(7.0), x -> true)) {
+                if (!isCrystal(e) || !e.isAlive() || p.distanceTo(e) > reach.value) continue;
+                if (estimate(e.position(), target.position(), 6.0) < 4.0) continue;
+                if (selfCheck.on && selfDamage(p, e.position(), 6.0, 0.5) > limit(p)) continue;
+                double d = p.distanceTo(e);
+                if (d < bd) {
+                    bd = d;
+                    best = e;
+                }
+            }
+            if (best != null) {
+                mc.gameMode.attack(p, best);
+                if (dbl.on) mc.gameMode.attack(p, best);
+                p.swing(InteractionHand.MAIN_HAND);
+                left--;
+                status = "Pop - noch " + left;
+                return;
+            }
+
+            // Kristall setzen
+            BlockPos b = base(mc, p, target);
+            if (b == null) {
+                target = null;
+                status = "keine Obsidian-Basis in Reichweite";
+                return;
+            }
+            boolean off = path(p.getOffhandItem()).equals("end_crystal");
+            int slot = off ? -1 : exact(p, "end_crystal");
+            if (!off && slot < 0) {
+                target = null;
+                status = "keine Kristalle mehr";
+                return;
+            }
+            final BlockPos fb = b;
+            if (off) useOn(mc, InteractionHand.OFF_HAND, fb, Direction.UP);
+            else withSlot(mc, slot, () -> useOn(mc, InteractionHand.MAIN_HAND, fb, Direction.UP));
+            status = "Kristall gesetzt";
         }
     }
 }

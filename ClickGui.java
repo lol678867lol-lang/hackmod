@@ -25,6 +25,9 @@ public class ClickGui extends Screen {
     private final long openedAt = System.currentTimeMillis();
     private double scroll;
     private int contentH;
+    private String query = "";
+    private boolean searchFocus;
+    private int sbX, sbY, sbW = 160, sbH = 13;
 
     public ClickGui() {
         super(Component.literal("HackMod"));
@@ -53,7 +56,10 @@ public class ClickGui extends Screen {
         String tip = null;
 
         for (int i = 0; i < cats.length; i++) {
-            List<Module> mods = Modules.byCategory(cats[i]);
+            List<Module> mods = new ArrayList<>();
+            for (Module mm : Modules.byCategory(cats[i])) {
+                if (query.isEmpty() || mm.name.toLowerCase().contains(query) || mm.desc.toLowerCase().contains(query)) mods.add(mm);
+            }
             if (mods.isEmpty()) continue;
             int c = 0;
             for (int k = 1; k < cols; k++) if (colH[k] < colH[c]) c = k;
@@ -130,8 +136,15 @@ public class ClickGui extends Screen {
         g.fill(0, 0, width, TOP - 8, 0xE00A0A14);
         g.fill(0, height - 20, width, height, 0xE00A0A14);
         String title = "H A C K M O D";
-        g.drawString(f, title, (width - f.width(title)) / 2, 14, Gfx.accent(0));
-        String sub = "Linksklick: an/aus   Rechtsklick: Einstellungen   Mausrad: scrollen   C / ESC: schliessen";
+        g.drawString(f, title, (width - f.width(title)) / 2, 5, Gfx.accent(0));
+        sbX = (width - sbW) / 2;
+        sbY = 16;
+        g.fill(sbX - 1, sbY - 1, sbX + sbW + 1, sbY + sbH + 1, searchFocus ? 0xFFB06CFF : 0xFF3A3A55);
+        g.fill(sbX, sbY, sbX + sbW, sbY + sbH, 0xFF0B0B13);
+        boolean blink = (System.currentTimeMillis() / 500) % 2 == 0;
+        String shown = query.isEmpty() && !searchFocus ? "Suchen ..." : query + (searchFocus && blink ? "_" : "");
+        g.drawString(f, shown, sbX + 4, sbY + 3, query.isEmpty() && !searchFocus ? 0xFF6A6A80 : 0xFFFFFFFF);
+        String sub = "Linksklick: an/aus   Rechtsklick: Einstellungen   Mausrad: scrollen   Suchleiste anklicken zum Tippen   C / ESC: schliessen";
         g.drawString(f, sub, (width - f.width(sub)) / 2, height - 12, 0xFF7A7A90);
 
         if (tip != null) {
@@ -146,6 +159,11 @@ public class ClickGui extends Screen {
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
         double mx = event.x(), my = event.y();
         int btn = event.button();
+        if (mx >= sbX && mx < sbX + sbW && my >= sbY && my < sbY + sbH) {
+            searchFocus = true;
+            return true;
+        }
+        searchFocus = false;
         if (my < TOP - 8 || my > height - 20) return super.mouseClicked(event, doubleClick);
         for (int i = zones.size() - 1; i >= 0; i--) {
             Zone z = zones.get(i);
@@ -172,7 +190,21 @@ public class ClickGui extends Screen {
 
     @Override
     public boolean keyPressed(KeyEvent event) {
-        if (event.key() == GLFW.GLFW_KEY_C) {
+        int k = event.key();
+        if (searchFocus) {
+            if (k == GLFW.GLFW_KEY_ESCAPE || k == GLFW.GLFW_KEY_ENTER) {
+                if (k == GLFW.GLFW_KEY_ESCAPE) query = "";
+                searchFocus = false;
+            } else if (k == GLFW.GLFW_KEY_BACKSPACE) {
+                if (!query.isEmpty()) query = query.substring(0, query.length() - 1);
+            } else if (query.length() < 24 && ((k >= GLFW.GLFW_KEY_A && k <= GLFW.GLFW_KEY_Z)
+                    || (k >= GLFW.GLFW_KEY_0 && k <= GLFW.GLFW_KEY_9) || k == GLFW.GLFW_KEY_SPACE || k == GLFW.GLFW_KEY_MINUS)) {
+                query += Character.toLowerCase((char) k);
+            }
+            scroll = 0;
+            return true;
+        }
+        if (k == GLFW.GLFW_KEY_C) {
             onClose();
             return true;
         }

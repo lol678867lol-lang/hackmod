@@ -21,6 +21,7 @@ public class HackModClient implements ClientModInitializer {
         Modules.init();
         Bot.init();
         Structs.init();
+        Extra6.init();
 
         KeyMapping.Category category = KeyMapping.Category.register(
                 Identifier.fromNamespaceAndPath("hackmod", "main"));
