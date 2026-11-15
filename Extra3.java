@@ -144,7 +144,7 @@ public final class Extra3 {
         @Override
         public void onHud(GuiGraphics g, Minecraft mc) {
             String t = noServer
-                    ? "Seed-XRay: nur Einzelspieler / LAN-Host"
+                    ? "Seed-XRay: Server - /seed holen, gleiche Welt lokal erstellen (Einzelspieler)"
                     : "Seed-XRay: " + found.size() + " Chunks gescannt, " + draw.size() + " Erze";
             g.drawString(mc.font, t, 6, 40, noServer ? 0xFFFF6666 : 0xFF66FFAA, true);
         }

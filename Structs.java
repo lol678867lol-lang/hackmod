@@ -9,6 +9,10 @@ import net.minecraft.server.MinecraftServer;
 
 import com.mojang.brigadier.arguments.StringArgumentType;
 
+import net.fabricmc.loader.api.FabricLoader;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -48,7 +52,27 @@ public final class Structs {
         Hit(String n, int x, int z, int c) { name = n; this.x = x; this.z = z; color = c; }
     }
 
+    private static Path file() {
+        return FabricLoader.getInstance().getConfigDir().resolve("hackmod-seed.txt");
+    }
+
+    private static void save(long seed) {
+        try {
+            Files.writeString(file(), Long.toString(seed));
+        } catch (Exception ignored) {
+        }
+    }
+
+    private static void load() {
+        try {
+            Path f = file();
+            if (Files.exists(f)) cmdSeed = Long.parseLong(Files.readString(f).trim());
+        } catch (Exception ignored) {
+        }
+    }
+
     static void init() {
+        load();
         ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) ->
             dispatcher.register(ClientCommandManager.literal("structseed")
                 .then(ClientCommandManager.argument("seed", StringArgumentType.greedyString()).executes(ctx -> {
@@ -58,7 +82,8 @@ public final class Structs {
                     } catch (NumberFormatException e) {
                         cmdSeed = (long) s.hashCode();
                     }
-                    ctx.getSource().sendFeedback(Component.literal("Struktur-Seed gesetzt: " + cmdSeed));
+                    save(cmdSeed);
+                    ctx.getSource().sendFeedback(Component.literal("Struktur-Seed gesetzt und gespeichert: " + cmdSeed));
                     return 1;
                 }))));
     }
