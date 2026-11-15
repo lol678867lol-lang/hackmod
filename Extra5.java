@@ -17,18 +17,18 @@ public final class Extra5 {
         srv.getCommands().performPrefixedCommand(src, cmd);
     }
 
-    private static String me(Minecraft mc) {
+    static String me(Minecraft mc) {
         return mc.getSingleplayerServer() != null ? mc.player.getUUID().toString() : "@s";
     }
 
     /** Einzelspieler/LAN-Host: ueber den eingebauten Server. Sonst: als normaler Chat-Befehl (braucht Op-Rechte auf dem Server). */
-    private static void exec(Minecraft mc, String cmd) {
+    static void exec(Minecraft mc, String cmd) {
         MinecraftServer srv = mc.getSingleplayerServer();
         if (srv != null) srv.execute(() -> run(srv, cmd));
         else if (mc.getConnection() != null) mc.getConnection().sendCommand(cmd);
     }
 
-    private static boolean online(Minecraft mc) {
+    static boolean online(Minecraft mc) {
         return mc.player != null && (mc.getSingleplayerServer() != null || mc.getConnection() != null);
     }
 
